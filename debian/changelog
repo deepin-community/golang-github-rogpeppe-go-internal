@@ -1,0 +1,28 @@
+golang-github-rogpeppe-go-internal (1.8.0-1) unstable; urgency=medium
+
+  * New upstream version 1.8.0
+  * Refresh debian/watch to use newer syntax
+  * Change Section from devel to golang
+  * Bump Standards-Version to 4.6.0 (no change)
+  * Mark library package with "Multi-Arch: foreign"
+  * Install our own copy of github.com/pkg/diff
+    until golang-github-pkg-diff enters Debian
+  * Add build-dependency on ca-certificates
+    which is needed by "go mod tidy" test in TestSimple/cover
+
+ -- Anthony Fok <foka@debian.org>  Tue, 12 Oct 2021 04:11:59 -0600
+
+golang-github-rogpeppe-go-internal (1.6.2-1) unstable; urgency=medium
+
+  * New upstream version 1.6.2
+  * debian/copyright: Add author’s email address
+  * debian/gbp.conf: Enable pristine-tar
+  * Bump debhelper dependency to "Build-Depends: debhelper-compat (= 13)"
+
+ -- Anthony Fok <foka@debian.org>  Fri, 23 Oct 2020 03:05:36 -0600
+
+golang-github-rogpeppe-go-internal (1.5.2-1) unstable; urgency=medium
+
+  * Initial release (Closes: #951419)
+
+ -- Anthony Fok <foka@debian.org>  Mon, 17 Feb 2020 01:52:46 -0700

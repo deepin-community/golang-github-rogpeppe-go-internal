@@ -1,0 +1,12 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --builddirectory=_build --buildsystem=golang --with golang
+
+execute_after_dh_auto_configure:
+	# Install our own copy of github.com/pkg/diff
+	# until golang-github-pkg-diff enters Debian
+	cp -a debian/go/src/github.com/pkg _build/src/github.com/
+
+override_dh_auto_test:
+	GOPROXY="" dh_auto_test

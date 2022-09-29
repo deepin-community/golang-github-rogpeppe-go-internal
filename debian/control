@@ -1,0 +1,78 @@
+Source: golang-github-rogpeppe-go-internal
+Maintainer: Debian Go Packaging Team <team+pkg-go@tracker.debian.org>
+Uploaders: Anthony Fok <foka@debian.org>
+Section: golang
+Testsuite: autopkgtest-pkg-go
+Priority: optional
+Build-Depends: ca-certificates,
+               debhelper-compat (= 13),
+               dh-golang (>= 1.46~),
+               golang-any,
+               golang-gopkg-errgo.v2-dev
+Standards-Version: 4.6.0
+Vcs-Browser: https://salsa.debian.org/go-team/packages/golang-github-rogpeppe-go-internal
+Vcs-Git: https://salsa.debian.org/go-team/packages/golang-github-rogpeppe-go-internal.git
+Homepage: https://github.com/rogpeppe/go-internal
+Rules-Requires-Root: no
+XS-Go-Import-Path: github.com/rogpeppe/go-internal
+
+Package: golang-github-rogpeppe-go-internal-dev
+Architecture: all
+Multi-Arch: foreign
+Depends: golang-gopkg-errgo.v2-dev,
+         ${misc:Depends}
+Description: Selected Go-internal packages factored out from the standard library
+ The go-internal repository factors out an opinionated selection of
+ internal packages and functionality from the Go standard library.
+ Currently this consists mostly of packages and testing code from
+ within the Go tool implementation.
+ .
+ Included are the following:
+ .
+  * dirhash: calculate hashes over directory trees the same way
+             that the Go tool does.
+  * goproxytest: a GOPROXY implementation designed for test use.
+  * gotooltest: Use the Go tool inside test scripts (see testscript below).
+  * imports: list of known architectures and OSs, and support for reading
+             import statements.
+  * modfile: read and write go.mod files while preserving formatting
+             and comments.
+  * module: module paths and versions.
+  * par: do work in parallel.
+  * semver: semantic version parsing.
+  * testenv: information on the current testing environment.
+  * testscript: script-based testing based on txtar files.
+  * txtar: simple text-based file archives for testing.
+ .
+ This package contains the development library files.
+
+Package: go-internal
+Architecture: any
+Depends: ${misc:Depends},
+         ${shlibs:Depends}
+Built-Using: ${misc:Built-Using}
+Description: Selected Go-internal packages factored out from the standard library (binaries)
+ The go-internal repository factors out an opinionated selection of
+ internal packages and functionality from the Go standard library.
+ Currently this consists mostly of packages and testing code from
+ within the Go tool implementation.
+ .
+ Included are the following:
+ .
+  * dirhash: calculate hashes over directory trees the same way
+             that the Go tool does.
+  * goproxytest: a GOPROXY implementation designed for test use.
+  * gotooltest: Use the Go tool inside test scripts (see testscript below).
+  * imports: list of known architectures and OSs, and support for reading
+             import statements.
+  * modfile: read and write go.mod files while preserving formatting
+             and comments.
+  * module: module paths and versions.
+  * par: do work in parallel.
+  * semver: semantic version parsing.
+  * testenv: information on the current testing environment.
+  * testscript: script-based testing based on txtar files.
+  * txtar: simple text-based file archives for testing.
+ .
+ This package contains the compiled binaries, namely testscript,
+ txtar-addmod, txtar-c and txtar-goproxy.
