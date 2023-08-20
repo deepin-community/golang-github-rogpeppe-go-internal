@@ -1,12 +1,11 @@
 #!/usr/bin/make -f
 
 %:
-	dh $@ --builddirectory=_build --buildsystem=golang --with golang
+	dh $@ --builddirectory=_build --buildsystem=golang
 
-execute_after_dh_auto_configure:
-	# Install our own copy of github.com/pkg/diff
-	# until golang-github-pkg-diff enters Debian
-	cp -a debian/go/src/github.com/pkg _build/src/github.com/
-
+# Patch testscript/testscript.go and override dh-golang default GOPROXY=off
+# to allow TestScripts/env_var_with_go and TestSimple/cover to PASS
 override_dh_auto_test:
-	GOPROXY="" dh_auto_test
+	patch -N -p1 -i debian/0001-Allow-TestSimple-cover-to-PASS.patch
+	GOPROXY= dh_auto_test
+	patch -R -p1 -i debian/0001-Allow-TestSimple-cover-to-PASS.patch

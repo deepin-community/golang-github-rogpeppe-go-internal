@@ -7,9 +7,9 @@ Package goproxytest serves Go modules from a proxy server designed to run on
 localhost during tests, both to make tests avoid requiring specific network
 servers and also to make them significantly faster.
 
-Each module archive is either a file named path_vers.txt or a directory named
-path_vers, where slashes in path have been replaced with underscores. The
-archive or directory must contain two files ".info" and ".mod", to be served as
+Each module archive is either a file named path_vers.txtar or path_vers.txt, or
+a directory named path_vers, where slashes in path have been replaced with underscores.
+The archive or directory must contain two files ".info" and ".mod", to be served as
 the info and mod files in the proxy protocol (see
 https://research.swtch.com/vgo-module).  The remaining files are served as the
 content of the module zip file.  The path@vers prefix required of files in the
@@ -34,10 +34,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rogpeppe/go-internal/module"
+	"golang.org/x/mod/module"
+	"golang.org/x/mod/semver"
+	"golang.org/x/tools/txtar"
+
 	"github.com/rogpeppe/go-internal/par"
-	"github.com/rogpeppe/go-internal/semver"
-	"github.com/rogpeppe/go-internal/txtar"
 )
 
 type Server struct {
@@ -96,21 +97,26 @@ func (srv *Server) readModList() error {
 	}
 	for _, info := range infos {
 		name := info.Name()
-		if !strings.HasSuffix(name, ".txt") && !info.IsDir() {
+		switch {
+		case strings.HasSuffix(name, ".txt"):
+			name = strings.TrimSuffix(name, ".txt")
+		case strings.HasSuffix(name, ".txtar"):
+			name = strings.TrimSuffix(name, ".txtar")
+		case info.IsDir():
+		default:
 			continue
 		}
-		name = strings.TrimSuffix(name, ".txt")
 		i := strings.LastIndex(name, "_v")
 		if i < 0 {
 			continue
 		}
 		encPath := strings.Replace(name[:i], "_", "/", -1)
-		path, err := module.DecodePath(encPath)
+		path, err := module.UnescapePath(encPath)
 		if err != nil {
 			return fmt.Errorf("cannot decode module path in %q: %v", name, err)
 		}
 		encVers := name[i+1:]
-		vers, err := module.DecodeVersion(encVers)
+		vers, err := module.UnescapeVersion(encVers)
 		if err != nil {
 			return fmt.Errorf("cannot decode module version in %q: %v", name, err)
 		}
@@ -133,7 +139,7 @@ func (srv *Server) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	enc, file := path[:i], path[i+len("/@v/"):]
-	path, err := module.DecodePath(enc)
+	path, err := module.UnescapePath(enc)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "go proxy_test: %v\n", err)
 		http.NotFound(w, r)
@@ -161,7 +167,7 @@ func (srv *Server) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	encVers, ext := file[:i], file[i+1:]
-	vers, err := module.DecodeVersion(encVers)
+	vers, err := module.UnescapeVersion(encVers)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "go proxy_test: %v\n", err)
 		http.NotFound(w, r)
@@ -269,25 +275,29 @@ func (srv *Server) findHash(m module.Version) string {
 }
 
 func (srv *Server) readArchive(path, vers string) *txtar.Archive {
-	enc, err := module.EncodePath(path)
+	enc, err := module.EscapePath(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "go proxy: %v\n", err)
 		return nil
 	}
-	encVers, err := module.EncodeVersion(vers)
+	encVers, err := module.EscapeVersion(vers)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "go proxy: %v\n", err)
 		return nil
 	}
 
 	prefix := strings.Replace(enc, "/", "_", -1)
-	name := filepath.Join(srv.dir, prefix+"_"+encVers+".txt")
+	name := filepath.Join(srv.dir, prefix+"_"+encVers)
+	txtName := name + ".txt"
+	txtarName := name + ".txtar"
 	a := srv.archiveCache.Do(name, func() interface{} {
-		a, err := txtar.ParseFile(name)
+		a, err := txtar.ParseFile(txtarName)
 		if os.IsNotExist(err) {
-			// we fallback to trying a directory
-			name = strings.TrimSuffix(name, ".txt")
-
+			// fall back to trying with the .txt extension
+			a, err = txtar.ParseFile(txtName)
+		}
+		if os.IsNotExist(err) {
+			// fall back to trying a directory
 			a = new(txtar.Archive)
 
 			err = filepath.Walk(name, func(path string, info os.FileInfo, err error) error {

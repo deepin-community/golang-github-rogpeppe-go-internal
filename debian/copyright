@@ -12,10 +12,6 @@ Copyright: 2020 Anthony Fok <foka@debian.org>
 License: BSD-3-clause
 Comment: Debian packaging is licensed under the same terms as upstream
 
-Files: debian/go/src/github.com/pkg/diff/*
-Copyright: 2018 Joshua Bleecher Snyder <josharian+github@gmail.com>
-License: BSD-3-clause
-
 License: BSD-3-clause
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are

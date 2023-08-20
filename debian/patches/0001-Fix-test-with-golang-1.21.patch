@@ -1,0 +1,20 @@
+From: Shengjing Zhu <zhsj@debian.org>
+Date: Fri, 28 Jul 2023 17:11:26 +0800
+Subject: Fix test with golang-1.21
+
+---
+ cmd/testscript/testdata/noproxy.txt | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/cmd/testscript/testdata/noproxy.txt b/cmd/testscript/testdata/noproxy.txt
+index f725a27..4ae1f05 100644
+--- a/cmd/testscript/testdata/noproxy.txt
++++ b/cmd/testscript/testdata/noproxy.txt
+@@ -6,5 +6,6 @@ testscript -v file.txt
+ 
+ -- file.txt --
+ >go env
+->[!windows] stdout '^GOPROXY="0.1.2.3"$'
++>[!windows] [!go1.21] stdout '^GOPROXY="0.1.2.3"$'
++>[!windows] [go1.21] stdout '^GOPROXY=''0.1.2.3''$'
+ >[windows] stdout '^set GOPROXY=0.1.2.3$'

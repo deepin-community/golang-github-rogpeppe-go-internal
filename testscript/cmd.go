@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pkg/diff"
+	"github.com/rogpeppe/go-internal/diff"
 	"github.com/rogpeppe/go-internal/txtar"
 )
 
@@ -24,7 +24,6 @@ import (
 // Keep list and the implementations below sorted by name.
 //
 // NOTE: If you make changes here, update doc.go.
-//
 var scriptCmds = map[string]func(*TestScript, bool, []string){
 	"cd":       (*TestScript).cmdCd,
 	"chmod":    (*TestScript).cmdChmod,
@@ -36,15 +35,16 @@ var scriptCmds = map[string]func(*TestScript, bool, []string){
 	"exists":   (*TestScript).cmdExists,
 	"grep":     (*TestScript).cmdGrep,
 	"mkdir":    (*TestScript).cmdMkdir,
+	"mv":       (*TestScript).cmdMv,
 	"rm":       (*TestScript).cmdRm,
-	"unquote":  (*TestScript).cmdUnquote,
 	"skip":     (*TestScript).cmdSkip,
-	"stdin":    (*TestScript).cmdStdin,
 	"stderr":   (*TestScript).cmdStderr,
+	"stdin":    (*TestScript).cmdStdin,
 	"stdout":   (*TestScript).cmdStdout,
 	"stop":     (*TestScript).cmdStop,
 	"symlink":  (*TestScript).cmdSymlink,
 	"unix2dos": (*TestScript).cmdUNIX2DOS,
+	"unquote":  (*TestScript).cmdUnquote,
 	"wait":     (*TestScript).cmdWait,
 }
 
@@ -96,29 +96,22 @@ func (ts *TestScript) cmdChmod(neg bool, args []string) {
 
 // cmp compares two files.
 func (ts *TestScript) cmdCmp(neg bool, args []string) {
-	if neg {
-		// It would be strange to say "this file can have any content except this precise byte sequence".
-		ts.Fatalf("unsupported: ! cmp")
-	}
 	if len(args) != 2 {
 		ts.Fatalf("usage: cmp file1 file2")
 	}
 
-	ts.doCmdCmp(args, false)
+	ts.doCmdCmp(neg, args, false)
 }
 
 // cmpenv compares two files with environment variable substitution.
 func (ts *TestScript) cmdCmpenv(neg bool, args []string) {
-	if neg {
-		ts.Fatalf("unsupported: ! cmpenv")
-	}
 	if len(args) != 2 {
 		ts.Fatalf("usage: cmpenv file1 file2")
 	}
-	ts.doCmdCmp(args, true)
+	ts.doCmdCmp(neg, args, true)
 }
 
-func (ts *TestScript) doCmdCmp(args []string, env bool) {
+func (ts *TestScript) doCmdCmp(neg bool, args []string, env bool) {
 	name1, name2 := args[0], args[1]
 	text1 := ts.ReadFile(name1)
 
@@ -129,8 +122,15 @@ func (ts *TestScript) doCmdCmp(args []string, env bool) {
 	if env {
 		text2 = ts.expand(text2)
 	}
-	if text1 == text2 {
-		return
+	eq := text1 == text2
+	if neg {
+		if eq {
+			ts.Fatalf("%s and %s do not differ", name1, name2)
+		}
+		return // they differ, as expected
+	}
+	if eq {
+		return // they are equal, as expected
 	}
 	if ts.params.UpdateScripts && !env {
 		if scriptFile, ok := ts.scriptFiles[absName2]; ok {
@@ -141,12 +141,9 @@ func (ts *TestScript) doCmdCmp(args []string, env bool) {
 		// update the script.
 	}
 
-	var sb strings.Builder
-	if err := diff.Text(name1, name2, text1, text2, &sb); err != nil {
-		ts.Check(err)
-	}
+	unifiedDiff := diff.Diff(name1, []byte(text1), name2, []byte(text2))
 
-	ts.Logf("%s", sb.String())
+	ts.Logf("%s", unifiedDiff)
 	ts.Fatalf("%s and %s differ", name1, name2)
 }
 
@@ -176,16 +173,16 @@ func (ts *TestScript) cmdCp(neg bool, args []string) {
 		case "stdout":
 			src = arg
 			data = []byte(ts.stdout)
-			mode = 0666
+			mode = 0o666
 		case "stderr":
 			src = arg
 			data = []byte(ts.stderr)
-			mode = 0666
+			mode = 0o666
 		default:
 			src = ts.MkAbs(arg)
 			info, err := os.Stat(src)
 			ts.Check(err)
-			mode = info.Mode() & 0777
+			mode = info.Mode() & 0o777
 			data, err = ioutil.ReadFile(src)
 			ts.Check(err)
 		}
@@ -224,6 +221,8 @@ func (ts *TestScript) cmdEnv(neg bool, args []string) {
 	}
 }
 
+var backgroundSpecifier = regexp.MustCompile(`^&([a-zA-Z_0-9]+&)?$`)
+
 // exec runs the given command.
 func (ts *TestScript) cmdExec(neg bool, args []string) {
 	if len(args) < 1 || (len(args) == 1 && args[0] == "&") {
@@ -231,16 +230,20 @@ func (ts *TestScript) cmdExec(neg bool, args []string) {
 	}
 
 	var err error
-	if len(args) > 0 && args[len(args)-1] == "&" {
+	if len(args) > 0 && backgroundSpecifier.MatchString(args[len(args)-1]) {
+		bgName := strings.TrimSuffix(strings.TrimPrefix(args[len(args)-1], "&"), "&")
+		if ts.findBackground(bgName) != nil {
+			ts.Fatalf("duplicate background process name %q", bgName)
+		}
 		var cmd *exec.Cmd
 		cmd, err = ts.execBackground(args[0], args[1:len(args)-1]...)
 		if err == nil {
 			wait := make(chan struct{})
 			go func() {
-				ctxWait(ts.ctxt, cmd)
+				waitOrStop(ts.ctxt, cmd, -1)
 				close(wait)
 			}()
-			ts.background = append(ts.background, backgroundCmd{cmd, wait, neg})
+			ts.background = append(ts.background, backgroundCmd{bgName, cmd, wait, neg})
 		}
 		ts.stdout, ts.stderr = "", ""
 	} else {
@@ -290,7 +293,7 @@ func (ts *TestScript) cmdExists(neg bool, args []string) {
 		if err != nil && !neg {
 			ts.Fatalf("%s does not exist", file)
 		}
-		if err == nil && !neg && readonly && info.Mode()&0222 != 0 {
+		if err == nil && !neg && readonly && info.Mode()&0o222 != 0 {
 			ts.Fatalf("%s exists but is writable", file)
 		}
 	}
@@ -305,8 +308,18 @@ func (ts *TestScript) cmdMkdir(neg bool, args []string) {
 		ts.Fatalf("usage: mkdir dir...")
 	}
 	for _, arg := range args {
-		ts.Check(os.MkdirAll(ts.MkAbs(arg), 0777))
+		ts.Check(os.MkdirAll(ts.MkAbs(arg), 0o777))
 	}
+}
+
+func (ts *TestScript) cmdMv(neg bool, args []string) {
+	if neg {
+		ts.Fatalf("unsupported: ! mv")
+	}
+	if len(args) != 2 {
+		ts.Fatalf("usage: mv old new")
+	}
+	ts.Check(os.Rename(ts.MkAbs(args[0]), ts.MkAbs(args[1])))
 }
 
 // unquote unquotes files.
@@ -320,7 +333,7 @@ func (ts *TestScript) cmdUnquote(neg bool, args []string) {
 		ts.Check(err)
 		data, err = txtar.Unquote(data)
 		ts.Check(err)
-		err = ioutil.WriteFile(file, data, 0666)
+		err = ioutil.WriteFile(file, data, 0o666)
 		ts.Check(err)
 	}
 }
@@ -431,7 +444,7 @@ func (ts *TestScript) cmdUNIX2DOS(neg bool, args []string) {
 		ts.Check(err)
 		dosData, err := unix2DOS(data)
 		ts.Check(err)
-		if err := ioutil.WriteFile(filename, dosData, 0666); err != nil {
+		if err := ioutil.WriteFile(filename, dosData, 0o666); err != nil {
 			ts.Fatalf("%s: %v", filename, err)
 		}
 	}
@@ -439,13 +452,69 @@ func (ts *TestScript) cmdUNIX2DOS(neg bool, args []string) {
 
 // Tait waits for background commands to exit, setting stderr and stdout to their result.
 func (ts *TestScript) cmdWait(neg bool, args []string) {
+	if len(args) > 1 {
+		ts.Fatalf("usage: wait [name]")
+	}
 	if neg {
 		ts.Fatalf("unsupported: ! wait")
 	}
 	if len(args) > 0 {
-		ts.Fatalf("usage: wait")
+		ts.waitBackgroundOne(args[0])
+	} else {
+		ts.waitBackground(true)
 	}
+}
 
+func (ts *TestScript) waitBackgroundOne(bgName string) {
+	bg := ts.findBackground(bgName)
+	if bg == nil {
+		ts.Fatalf("unknown background process %q", bgName)
+	}
+	<-bg.wait
+	ts.stdout = bg.cmd.Stdout.(*strings.Builder).String()
+	ts.stderr = bg.cmd.Stderr.(*strings.Builder).String()
+	if ts.stdout != "" {
+		fmt.Fprintf(&ts.log, "[stdout]\n%s", ts.stdout)
+	}
+	if ts.stderr != "" {
+		fmt.Fprintf(&ts.log, "[stderr]\n%s", ts.stderr)
+	}
+	// Note: ignore bg.neg, which only takes effect on the non-specific
+	// wait command.
+	if bg.cmd.ProcessState.Success() {
+		if bg.neg {
+			ts.Fatalf("unexpected command success")
+		}
+	} else {
+		if ts.ctxt.Err() != nil {
+			ts.Fatalf("test timed out while running command")
+		} else if !bg.neg {
+			ts.Fatalf("unexpected command failure")
+		}
+	}
+	// Remove this process from the list of running background processes.
+	for i := range ts.background {
+		if bg == &ts.background[i] {
+			ts.background = append(ts.background[:i], ts.background[i+1:]...)
+			break
+		}
+	}
+}
+
+func (ts *TestScript) findBackground(bgName string) *backgroundCmd {
+	if bgName == "" {
+		return nil
+	}
+	for i := range ts.background {
+		bg := &ts.background[i]
+		if bg.name == bgName {
+			return bg
+		}
+	}
+	return nil
+}
+
+func (ts *TestScript) waitBackground(checkStatus bool) {
 	var stdouts, stderrs []string
 	for _, bg := range ts.background {
 		<-bg.wait
@@ -465,6 +534,9 @@ func (ts *TestScript) cmdWait(neg bool, args []string) {
 			stderrs = append(stderrs, cmdStderr)
 		}
 
+		if !checkStatus {
+			continue
+		}
 		if bg.cmd.ProcessState.Success() {
 			if bg.neg {
 				ts.Fatalf("unexpected command success")
