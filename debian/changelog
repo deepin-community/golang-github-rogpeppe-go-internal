@@ -1,3 +1,74 @@
+golang-github-rogpeppe-go-internal (1.11.0-1) unstable; urgency=medium
+
+  * Team upload
+  * New upstream version 1.11.0
+  * Add patch to fix test with golang-1.21
+
+ -- Shengjing Zhu <zhsj@debian.org>  Fri, 28 Jul 2023 17:12:15 +0800
+
+golang-github-rogpeppe-go-internal (1.10.0+git20230524.ec11942-1) unstable; urgency=medium
+
+  * New upstream version 1.10.0+git20230524.ec11942
+  * Update versioned dependencies as per go.mod; in particular,
+    upstream has replaced the use of golang-github-pkg-diff-dev
+    with Go’s internal/diff for memory efficiency.
+  * Bump Standards-Version to 4.6.2 (no change)
+  * Replace Built-Using field with Static-Built-Using
+  * Refresh debian/0001-Allow-TestSimple-cover-to-PASS.patch
+
+ -- Anthony Fok <foka@debian.org>  Mon, 19 Jun 2023 23:06:51 -0600
+
+golang-github-rogpeppe-go-internal (1.9.0-1) unstable; urgency=medium
+
+  * New upstream version 1.9.0
+  * Remove dependency on golang-gopkg-errgo.v2-dev as per upstream
+  * Bump Standards-Version to 4.6.1 (no change)
+
+ -- Anthony Fok <foka@debian.org>  Mon, 29 Aug 2022 13:43:00 -0600
+
+golang-github-rogpeppe-go-internal (1.8.1-1) unstable; urgency=medium
+
+  * New upstream version 1.8.1
+
+ -- Anthony Fok <foka@debian.org>  Fri, 25 Feb 2022 03:41:08 -0700
+
+golang-github-rogpeppe-go-internal (1.8.0-4) unstable; urgency=medium
+
+  * Unapply 0001-Allow-TestSimple-cover-to-PASS.patch after tests.
+    It turns out that changes to files under _build/src, such as
+    _build/src/github.com/rogpeppe/go-internal/testscript/testscript.go
+    do end up in the final .deb binary package, causing autopkgtest to fail
+    with "Reversed (or previously applied) patch detected!" error.
+    Thanks to Paul Gevers for reporting the autopkgtest regression!
+    (Closes: #1001734)
+
+ -- Anthony Fok <foka@debian.org>  Thu, 16 Dec 2021 21:31:18 -0700
+
+golang-github-rogpeppe-go-internal (1.8.0-3) unstable; urgency=medium
+
+  * Add missing "-i" option to "patch" command in override_dh_auto_test.
+    The patch that is intended to allow TestSimple/cover to PASS during
+    Ubuntu build was not applied due to the missing "-i" in 1.8.0-2.
+    Also, fix the paths to testscript/testscript.go listed in
+    debian/0001-Allow-TestSimple-cover-to-PASS.patch
+
+ -- Anthony Fok <foka@debian.org>  Thu, 02 Dec 2021 04:52:14 -0700
+
+golang-github-rogpeppe-go-internal (1.8.0-2) unstable; urgency=medium
+
+  * Remove our own copy of github.com/pkg/diff, and instead depend on
+    golang-github-pkg-diff, which has entered Debian since 2021-11-05
+  * Use dh-sequence-golang instead of dh-golang and --with=golang
+  * Call dh with --builddirectory=_build
+  * Allow TestSimple/cover to PASS during Debian/Ubuntu package build
+    gotooltest/testdata/cover.txt runs "go mod tidy" which fails with
+    "dial tcp: lookup proxy.golang.org: no such host".  See the build logs at
+    https://launchpad.net/ubuntu/+source/golang-github-rogpeppe-go-internal/1.8.0-1
+    for more information.
+    Curiously, TestSimple/cover does not fail on Debian build daemons.
+
+ -- Anthony Fok <foka@debian.org>  Wed, 01 Dec 2021 15:06:57 -0700
+
 golang-github-rogpeppe-go-internal (1.8.0-1) unstable; urgency=medium
 
   * New upstream version 1.8.0

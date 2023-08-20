@@ -14,10 +14,10 @@ To invoke the tests, call testscript.Run. For example:
 		})
 	}
 
-A testscript directory holds test scripts *.txt run during 'go test'.
+A testscript directory holds test scripts with extension txtar or txt run during 'go test'.
 Each script defines a subtest; the exact set of allowable commands in a
 script are defined by the parameters passed to the Run function.
-To run a specific script foo.txt
+To run a specific script foo.txtar or foo.txt, run
 
 	go test cmd/go -run=TestName/^foo$
 
@@ -38,7 +38,7 @@ In general script files should have short names: a few words, not whole sentence
 The first word should be the general category of behavior being tested,
 often the name of a subcommand to be tested or a concept (vendor, pattern).
 
-Each script is a text archive (go doc github.com/rogpeppe/go-internal/txtar).
+Each script is a text archive (go doc golang.org/x/tools/txtar).
 The script begins with an actual command script to run
 followed by the content of zero or more supporting files to
 create in the script's temporary file system before it starts executing.
@@ -56,11 +56,13 @@ As an example:
 Each script runs in a fresh temporary work directory tree, available to scripts as $WORK.
 Scripts also have access to these other environment variables:
 
-	HOME=/no-home
 	PATH=<actual PATH>
-	TMPDIR=$WORK/tmp
+	HOME=/no-home
+	TMPDIR=$WORK/.tmp
 	devnull=<value of os.DevNull>
-	goversion=<current Go version; for example, 1.12>
+	/=<value of os.PathSeparator>
+	:=<value of os.PathListSeparator>
+	$=$
 
 The environment variable $exe (lowercase) is an empty string on most
 systems, ".exe" on Windows.
@@ -68,7 +70,7 @@ systems, ".exe" on Windows.
 The script's supporting files are unpacked relative to $WORK
 and then the script begins execution in that
 directory as well. Thus the example above runs in $WORK
-with $WORK/hello.txt containing the listed contents.
+with $WORK/hello.txtar containing the listed contents.
 
 The lines at the top of the script are a sequence of commands to be
 executed by a small script engine in the testscript package (not the system
@@ -100,11 +102,20 @@ commands support this prefix. They are indicated below by [!] in the synopsis.
 The command prefix [cond] indicates that the command on the rest of the line
 should only run when the condition is satisfied. The predefined conditions are:
 
- - [short] for testing.Short()
- - [net] for whether the external network can be used
- - [link] for whether the OS has hard link support
- - [symlink] for whether the OS has symbolic link support
- - [exec:prog] for whether prog is available for execution (found by exec.LookPath)
+  - [short] for testing.Short()
+  - [net] for whether the external network can be used
+  - [link] for whether the OS has hard link support
+  - [symlink] for whether the OS has symbolic link support
+  - [exec:prog] for whether prog is available for execution (found by exec.LookPath)
+  - [gc] for whether Go was built with gc
+  - [gccgo] for whether Go was built with gccgo
+  - [go1.x] for whether the Go version is 1.x or later
+  - [unix] for whether the OS is Unix-like (that is, would match the 'unix' build
+    constraint)
+
+Any known values of GOOS and GOARCH can also be used as conditions. They will be
+satisfied if the target OS or architecture match the specified value. For example,
+the condition [darwin] is true if GOOS=darwin, and [amd64] is true if GOARCH=amd64.
 
 A condition can be negated: [!short] means to run the rest of the line
 when testing.Short() is false.
@@ -113,96 +124,107 @@ Additional conditions can be added by passing a function to Params.Condition.
 
 The predefined commands are:
 
-- cd dir
-  Change to the given directory for future commands.
+  - cd dir
+    Change to the given directory for future commands.
 
-- chmod perm path...
-  Change the permissions of the files or directories named by the path arguments
-  to the given octal mode (000 to 777).
+  - chmod perm path...
+    Change the permissions of the files or directories named by the path arguments
+    to the given octal mode (000 to 777).
 
-- cmp file1 file2
-  Check that the named files have the same content.
-  By convention, file1 is the actual data and file2 the expected data.
-  File1 can be "stdout" or "stderr" to use the standard output or standard error
-  from the most recent exec or wait command.
-  (If the files have differing content, the failure prints a diff.)
+  - [!] cmp file1 file2
+    Check that the named files have (or do not have) the same content.
+    By convention, file1 is the actual data and file2 the expected data.
+    File1 can be "stdout" or "stderr" to use the standard output or standard error
+    from the most recent exec or wait command.
+    (If the files have differing content and the command is not negated,
+    the failure prints a diff.)
 
-- cmpenv file1 file2
-  Like cmp, but environment variables in file2 are substituted before the
-  comparison. For example, $GOOS is replaced by the target GOOS.
+  - [!] cmpenv file1 file2
+    Like cmp, but environment variables in file2 are substituted before the
+    comparison. For example, $GOOS is replaced by the target GOOS.
 
-- cp src... dst
-  Copy the listed files to the target file or existing directory.
-  src can include "stdout" or "stderr" to use the standard output or standard error
-  from the most recent exec or go command.
+  - cp src... dst
+    Copy the listed files to the target file or existing directory.
+    src can include "stdout" or "stderr" to use the standard output or standard error
+    from the most recent exec or go command.
 
-- env [key=value...]
-  With no arguments, print the environment (useful for debugging).
-  Otherwise add the listed key=value pairs to the environment.
+  - env [key=value...]
+    With no arguments, print the environment (useful for debugging).
+    Otherwise add the listed key=value pairs to the environment.
 
-- [!] exec program [args...] [&]
-  Run the given executable program with the arguments.
-  It must (or must not) succeed.
-  Note that 'exec' does not terminate the script (unlike in Unix shells).
+  - [!] exec program [args...] [&]
+    Run the given executable program with the arguments.
+    It must (or must not) succeed.
+    Note that 'exec' does not terminate the script (unlike in Unix shells).
 
-  If the last token is '&', the program executes in the background. The standard
-  output and standard error of the previous command is cleared, but the output
-  of the background process is buffered — and checking of its exit status is
-  delayed — until the next call to 'wait', 'skip', or 'stop' or the end of the
-  test. At the end of the test, any remaining background processes are
-  terminated using os.Interrupt (if supported) or os.Kill.
+    If the last token is '&', the program executes in the background. The standard
+    output and standard error of the previous command is cleared, but the output
+    of the background process is buffered — and checking of its exit status is
+    delayed — until the next call to 'wait', 'skip', or 'stop' or the end of the
+    test. At the end of the test, any remaining background processes are
+    terminated using os.Interrupt (if supported) or os.Kill.
 
-  Standard input can be provided using the stdin command; this will be
-  cleared after exec has been called.
+    If the last token is '&word&` (where "word" is alphanumeric), the
+    command runs in the background but has a name, and can be waited
+    for specifically by passing the word to 'wait'.
 
-- [!] exists [-readonly] file...
-  Each of the listed files or directories must (or must not) exist.
-  If -readonly is given, the files or directories must be unwritable.
+    Standard input can be provided using the stdin command; this will be
+    cleared after exec has been called.
 
-- [!] grep [-count=N] pattern file
-  The file's content must (or must not) match the regular expression pattern.
-  For positive matches, -count=N specifies an exact number of matches to require.
+  - [!] exists [-readonly] file...
+    Each of the listed files or directories must (or must not) exist.
+    If -readonly is given, the files or directories must be unwritable.
 
-- mkdir path...
-  Create the listed directories, if they do not already exists.
+  - [!] grep [-count=N] pattern file
+    The file's content must (or must not) match the regular expression pattern.
+    For positive matches, -count=N specifies an exact number of matches to require.
 
-- unquote file...
-  Rewrite each file by replacing any leading ">" characters from
-  each line. This enables a file to contain substrings that look like
-  txtar file markers.
-  See also https://godoc.org/github.com/rogpeppe/go-internal/txtar#Unquote
+  - mkdir path...
+    Create the listed directories, if they do not already exists.
 
-- rm file...
-  Remove the listed files or directories.
+  - mv path1 path2
+    Rename path1 to path2. OS-specific restrictions may apply when path1 and path2
+    are in different directories.
 
-- skip [message]
-  Mark the test skipped, including the message if given.
+  - rm file...
+    Remove the listed files or directories.
 
-- stdin file
-  Set the standard input for the next exec command to the contents of the given file.
-  File can be "stdout" or "stderr" to use the standard output or standard error
-  from the most recent exec or wait command.
+  - skip [message]
+    Mark the test skipped, including the message if given.
 
-- [!] stderr [-count=N] pattern
-  Apply the grep command (see above) to the standard error
-  from the most recent exec or wait command.
+  - [!] stderr [-count=N] pattern
+    Apply the grep command (see above) to the standard error
+    from the most recent exec or wait command.
 
-- [!] stdout [-count=N] pattern
-  Apply the grep command (see above) to the standard output
-  from the most recent exec or wait command.
+  - stdin file
+    Set the standard input for the next exec command to the contents of the given file.
+    File can be "stdout" or "stderr" to use the standard output or standard error
+    from the most recent exec or wait command.
 
-- stop [message]
-  Stop the test early (marking it as passing), including the message if given.
+  - [!] stdout [-count=N] pattern
+    Apply the grep command (see above) to the standard output
+    from the most recent exec or wait command.
 
-- symlink file -> target
-  Create file as a symlink to target. The -> (like in ls -l output) is required.
+  - stop [message]
+    Stop the test early (marking it as passing), including the message if given.
 
-- wait
-  Wait for all 'exec' and 'go' commands started in the background (with the '&'
-  token) to exit, and display success or failure status for them.
-  After a call to wait, the 'stderr' and 'stdout' commands will apply to the
-  concatenation of the corresponding streams of the background commands,
-  in the order in which those commands were started.
+  - symlink file -> target
+    Create file as a symlink to target. The -> (like in ls -l output) is required.
+
+  - unquote file...
+    Rewrite each file by replacing any leading ">" characters from
+    each line. This enables a file to contain substrings that look like
+    txtar file markers.
+    See also https://godoc.org/github.com/rogpeppe/go-internal/txtar#Unquote
+
+  - wait [command]
+    Wait for all 'exec' and 'go' commands started in the background (with the '&'
+    token) to exit, and display success or failure status for them.
+    After a call to wait, the 'stderr' and 'stdout' commands will apply to the
+    concatenation of the corresponding streams of the background commands,
+    in the order in which those commands were started.
+
+    If an argument is specified, it waits for just that command.
 
 When TestScript runs a script and the script fails, by default TestScript shows
 the execution of the most recent phase of the script (since the last # comment)
@@ -278,7 +300,7 @@ If Params.TestWork is true, it causes each test to log the name of its $WORK dir
 environment variable settings and also to leave that directory behind when it exits,
 for manual debugging of failing tests:
 
-	$ go test -run=Script -work
+	$ go test -run=Script -testwork
 	--- FAIL: TestScript (3.75s)
 	    --- FAIL: TestScript/install_rebuild_gopath (0.16s)
 	        script_test.go:223:

@@ -1,8 +1,9 @@
 module github.com/rogpeppe/go-internal
 
-go 1.11
+go 1.19
 
 require (
-	github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e
-	gopkg.in/errgo.v2 v2.1.0
+	golang.org/x/mod v0.9.0
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
+	golang.org/x/tools v0.1.12
 )

@@ -10,7 +10,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"go/build"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	goVersionRegex = regexp.MustCompile(`^go([1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+	goVersionRegex = regexp.MustCompile(`^go([1-9][0-9]*)\.([1-9][0-9]*)$`)
 
 	goEnv struct {
 		GOROOT      string
@@ -37,12 +37,30 @@ var (
 
 // initGoEnv initialises goEnv. It should only be called using goEnv.once.Do,
 // as in Setup.
-func initGoEnv() error {
-	var err error
+//
+// Run all of these probe commands in a temporary directory, so as not to make
+// any assumptions about the caller's working directory.
+func initGoEnv() (err error) {
+	td, err := os.MkdirTemp("", "gotooltest-initGoEnv")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary directory for go command tests: %w", err)
+	}
+	defer func() {
+		if rerr := os.RemoveAll(td); rerr != nil && err == nil {
+			err = fmt.Errorf("failed to remove temporary directory for go command tests: %w", rerr)
+		}
+	}()
+
+	// Write a temporary go.mod file in td. This ensures that we create
+	// a porcelain environment in which to run these probe commands.
+	if err := os.WriteFile(filepath.Join(td, "go.mod"), []byte("module gotooltest"), 0600); err != nil {
+		return fmt.Errorf("failed to write temporary go.mod file: %w", err)
+	}
 
 	run := func(args ...string) (*bytes.Buffer, *bytes.Buffer, error) {
 		var stdout, stderr bytes.Buffer
 		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = td
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		return &stdout, &stderr, cmd.Run()
@@ -104,27 +122,6 @@ func Setup(p *testscript.Params) error {
 		p.Cmds = make(map[string]func(ts *testscript.TestScript, neg bool, args []string))
 	}
 	p.Cmds["go"] = cmdGo
-	origCondition := p.Condition
-	p.Condition = func(cond string) (bool, error) {
-		if cond == "gc" || cond == "gccgo" {
-			// TODO this reflects the compiler that the current
-			// binary was built with but not necessarily the compiler
-			// that will be used.
-			return cond == runtime.Compiler, nil
-		}
-		if goVersionRegex.MatchString(cond) {
-			for _, v := range build.Default.ReleaseTags {
-				if cond == v {
-					return true, nil
-				}
-			}
-			return false, nil
-		}
-		if origCondition == nil {
-			return false, fmt.Errorf("unknown condition %q", cond)
-		}
-		return origCondition(cond)
-	}
 	return nil
 }
 
@@ -132,7 +129,7 @@ func goEnviron(env0 []string) []string {
 	env := environ(env0)
 	workdir := env.get("WORK")
 	return append(env, []string{
-		"GOPATH=" + filepath.Join(workdir, "gopath"),
+		"GOPATH=" + filepath.Join(workdir, ".gopath"),
 		"CCACHE_DISABLE=1", // ccache breaks with non-existent HOME
 		"GOARCH=" + runtime.GOARCH,
 		"GOOS=" + runtime.GOOS,
@@ -174,13 +171,4 @@ func (e0 *environ) get(name string) string {
 		}
 	}
 	return ""
-}
-
-func (e *environ) set(name, val string) {
-	*e = append(*e, name+"="+val)
-}
-
-func (e *environ) unset(name string) {
-	// TODO actually remove the name from the environment.
-	e.set(name, "")
 }
